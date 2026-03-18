@@ -282,8 +282,8 @@ This project is licensed under the MIT License — see [LICENSE](LICENSE) for de
 Cybersecurity Engineer | SOC Analyst | Python Developer  
 📍 Ahmedabad, Gujarat, India
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?logo=linkedin)](https://linkedin.com/in/YOUR_PROFILE)
-[![GitHub](https://img.shields.io/badge/GitHub-Follow-181717?logo=github)](https://github.com/YOUR_USERNAME)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?logo=linkedin)](https://www.linkedin.com/in/yashdeep-sankhla-1a175b2bb)
+[![GitHub](https://img.shields.io/badge/GitHub-Follow-181717?logo=github)](https://github.com/y4shsec)
 [![Portfolio](https://img.shields.io/badge/Portfolio-Visit-FF5722)](https://YOUR_PORTFOLIO.com)
 
 ---
