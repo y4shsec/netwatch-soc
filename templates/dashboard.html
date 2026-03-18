@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NetWatch SOC</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0d12;color:#c9d1d9;font-family:'Courier New',monospace;font-size:12px}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:#0d1117}
+::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+.topbar{background:#0d1117;border-bottom:1px solid #21262d;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{font-size:15px;font-weight:bold;color:#58a6ff;letter-spacing:2px}
+.logo span{color:#3fb950}
+.topright{display:flex;gap:12px;align-items:center}
+.badge{padding:3px 9px;border-radius:3px;font-size:10px;font-weight:bold;letter-spacing:.5px}
+.b-live{background:#3fb95018;color:#3fb950;border:1px solid #3fb950}
+.b-warn{background:#d2992218;color:#d29922;border:1px solid #d29922}
+.b-crit{background:#f8514918;color:#f85149;border:1px solid #f85149}
+#clock{color:#484f58;font-size:10px}
+.layout{display:grid;grid-template-columns:210px 1fr;min-height:calc(100vh - 46px)}
+.sidebar{background:#0d1117;border-right:1px solid #21262d;padding:10px 0;display:flex;flex-direction:column}
+.ns{padding:10px 14px 3px;font-size:9px;color:#484f58;letter-spacing:1.5px;text-transform:uppercase}
+.ni{padding:7px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;color:#8b949e;border-left:2px solid transparent;font-size:11px;transition:all .12s}
+.ni:hover{color:#c9d1d9;background:#161b22}
+.ni.active{color:#58a6ff;border-left-color:#58a6ff;background:#161b22}
+.sidebar-foot{margin-top:auto;padding:10px 14px;border-top:1px solid #21262d;font-size:9px;color:#484f58;line-height:1.8}
+.main{padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.mg{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.mc{background:#161b22;border:1px solid #21262d;border-radius:5px;padding:11px 13px}
+.ml{font-size:9px;color:#484f58;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px}
+.mv{font-size:20px;font-weight:bold}.ms{font-size:9px;color:#8b949e;margin-top:2px}
+.blue{color:#58a6ff}.green{color:#3fb950}.red{color:#f85149}.yellow{color:#d29922}.purple{color:#a78bfa}
+.panel{background:#161b22;border:1px solid #21262d;border-radius:5px;overflow:hidden}
+.ph{padding:9px 13px;border-bottom:1px solid #21262d;display:flex;align-items:center;justify-content:space-between}
+.pt{font-size:10px;font-weight:bold;color:#8b949e;text-transform:uppercase;letter-spacing:.5px}
+.pb{padding:9px 13px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+table{width:100%;border-collapse:collapse;font-size:10px}
+thead th{padding:4px 8px;text-align:left;font-size:9px;color:#484f58;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #21262d}
+tbody tr{border-bottom:1px solid #161b22;transition:background .1s}
+tbody tr:hover{background:#1c2230}
+tbody td{padding:4px 8px}
+.pb-tag{padding:1px 5px;border-radius:3px;font-size:9px;font-weight:bold}
+.t-tcp{background:#58a6ff18;color:#58a6ff;border:1px solid #58a6ff44}
+.t-udp{background:#3fb95018;color:#3fb950;border:1px solid #3fb95044}
+.t-dns{background:#d2992218;color:#d29922;border:1px solid #d2992244}
+.t-arp{background:#a78bfa18;color:#a78bfa;border:1px solid #a78bfa44}
+.t-icmp{background:#f8514918;color:#ffa198;border:1px solid #f8514944}
+.t-oth{background:#30363d;color:#8b949e}
+.s-CRITICAL{color:#f85149;font-weight:bold}
+.s-HIGH{color:#f85149}.s-MEDIUM{color:#d29922}.s-LOW{color:#58a6ff}.s-INFO{color:#3fb950}
+.pulse{width:6px;height:6px;border-radius:50%;background:#3fb950;display:inline-block;animation:pulse 1.5s infinite;margin-right:4px}
+.pulse.r{background:#f85149}.pulse.y{background:#d29922}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+.aibar{margin:5px 0}
+.aibl{display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px}
+.aibg{height:3px;background:#21262d;border-radius:2px}
+.aib{height:3px;border-radius:2px;transition:width .5s ease}
+.btn{padding:4px 10px;border-radius:3px;border:none;cursor:pointer;font-family:'Courier New',monospace;font-size:10px;font-weight:bold;transition:opacity .15s}
+.btn:hover{opacity:.8}
+.btn-p{background:#58a6ff;color:#000}
+.btn-s{background:#21262d;color:#c9d1d9;border:1px solid #30363d}
+.btn-g{background:#238636;color:#fff}
+#topo-svg{width:100%;height:280px;background:#0a0d12;border-radius:4px;display:block}
+.ai-log-box{height:360px;overflow-y:auto;font-size:11px;line-height:1.9;padding:4px}
+section{display:none}section.active{display:contents}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">NET<span>WATCH</span> SOC</div>
+  <div class="topright">
+    <span class="badge b-live"><span class="pulse"></span>LIVE</span>
+    <span class="badge b-warn" id="badge-alerts">0 ALERTS</span>
+    <span class="badge b-crit" id="badge-crit">0 CRITICAL</span>
+    <span id="clock">--:--:--</span>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="ns">Monitor</div>
+    <div class="ni active" data-sec="overview">▸ Overview</div>
+    <div class="ni" data-sec="packets">▸ Live Packets</div>
+    <div class="ni" data-sec="devices">▸ Devices</div>
+    <div class="ns">Detection</div>
+    <div class="ni" data-sec="alerts">▸ Security Alerts</div>
+    <div class="ni" data-sec="ai">▸ AI Detection</div>
+    <div class="ns">Intelligence</div>
+    <div class="ni" onclick="window.open('/devices-intel','_blank')">▸ Device Intelligence</div>
+    <div class="ns">Tools</div>
+    <div class="ni" data-sec="topology">▸ Topology Map</div>
+    <div class="ni" data-sec="pcap">▸ PCAP Analyzer</div>
+    <div class="ni" data-sec="nmap">▸ Nmap Scanner</div>
+    <div class="sidebar-foot">
+      Iface: <span id="sf-iface" style="color:#3fb950">-</span><br>
+      Pkts:  <span id="sf-pkts"  style="color:#58a6ff">0</span><br>
+      DB:    <span id="sf-db"    style="color:#8b949e">0 saved</span>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main" id="main-content">
+
+    <!-- OVERVIEW -->
+    <div id="sec-overview">
+      <div class="mg">
+        <div class="mc"><div class="ml">Pkts / sec</div><div class="mv blue" id="m-pps">0</div><div class="ms">live rate</div></div>
+        <div class="mc"><div class="ml">Total Pkts</div><div class="mv blue" id="m-total">0</div><div class="ms">this session</div></div>
+        <div class="mc"><div class="ml">Devices</div><div class="mv green" id="m-devs">0</div><div class="ms">discovered</div></div>
+        <div class="mc"><div class="ml">Alerts</div><div class="mv red" id="m-alerts">0</div><div class="ms">all time</div></div>
+        <div class="mc"><div class="ml">Uptime</div><div class="mv yellow" id="m-uptime">0s</div><div class="ms">sniffer</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="ph"><span class="pt">Traffic Rate</span><span><span class="pulse"></span>Live</span></div>
+        <div class="pb" style="height:90px"><canvas id="trafficChart"></canvas></div>
+      </div>
+
+      <div class="two">
+        <div class="panel">
+          <div class="ph"><span class="pt">Protocol Distribution</span></div>
+          <div class="pb" style="height:170px"><canvas id="protoChart"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="ph"><span class="pt">AI Attack Classifier</span></div>
+          <div class="pb">
+            <div class="aibar"><div class="aibl"><span class="green">Normal</span><span class="green" id="p-NORMAL">0%</span></div><div class="aibg"><div class="aib" id="b-NORMAL" style="width:0%;background:#3fb950"></div></div></div>
+            <div class="aibar"><div class="aibl"><span class="red">DDoS</span><span class="red" id="p-DDOS">0%</span></div><div class="aibg"><div class="aib" id="b-DDOS" style="width:0%;background:#f85149"></div></div></div>
+            <div class="aibar"><div class="aibl"><span class="yellow">Port Scan</span><span class="yellow" id="p-PORT_SCAN">0%</span></div><div class="aibg"><div class="aib" id="b-PORT_SCAN" style="width:0%;background:#d29922"></div></div></div>
+            <div class="aibar"><div class="aibl"><span class="purple">Brute Force</span><span class="purple" id="p-BRUTE_FORCE">0%</span></div><div class="aibg"><div class="aib" id="b-BRUTE_FORCE" style="width:0%;background:#a78bfa"></div></div></div>
+            <div class="aibar"><div class="aibl"><span class="blue">Malware C2</span><span class="blue" id="p-MALWARE_C2">0%</span></div><div class="aibg"><div class="aib" id="b-MALWARE_C2" style="width:0%;background:#58a6ff"></div></div></div>
+            <div id="ai-threat-box" style="display:none;margin-top:8px;padding:6px 8px;background:#f8514912;border:1px solid #f85149;border-radius:3px;font-size:9px;color:#ffa198"></div>
+            <div style="margin-top:8px;font-size:9px;color:#484f58">
+              AI scans every 20th packet — <span id="ai-scanned-count" style="color:#58a6ff">0 packets analyzed</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="ph"><span class="pt">Recent Alerts</span><button class="btn btn-s" onclick="showSection('alerts')">View All</button></div>
+        <div class="pb" style="overflow-x:auto">
+          <table><thead><tr><th>Time</th><th>Severity</th><th>Type</th><th>Src IP</th><th>Message</th></tr></thead>
+          <tbody id="ov-alert-body"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PACKETS -->
+    <div id="sec-packets" style="display:none">
+      <div class="panel">
+        <div class="ph"><span class="pt">Live Packet Monitor</span><span><span class="pulse"></span><span id="pkt-count-label">0 pkts</span></span></div>
+        <div class="pb" style="overflow-x:auto;max-height:600px;overflow-y:auto">
+          <table id="pkt-table">
+            <thead><tr><th>Time</th><th>Src IP</th><th>Dst IP</th><th>Proto</th><th>App</th><th>Sport</th><th>Dport</th><th>Size</th><th>Info</th></tr></thead>
+            <tbody id="pkt-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- DEVICES -->
+    <div id="sec-devices" style="display:none">
+      <div class="panel">
+        <div class="ph">
+          <span class="pt">Connected Devices</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-p" onclick="triggerScan()">ARP Scan</button>
+            <button class="btn btn-s" onclick="triggerNmap()">Nmap Deep Scan</button>
+          </div>
+        </div>
+        <div class="pb" style="overflow-x:auto">
+          <table><thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Vendor</th><th>Last Seen</th></tr></thead>
+          <tbody id="dev-body"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ALERTS -->
+    <div id="sec-alerts" style="display:none">
+      <div class="panel">
+        <div class="ph">
+          <span class="pt">Security Alerts</span>
+          <div style="display:flex;gap:6px">
+            <select id="sev-filter" style="background:#21262d;color:#c9d1d9;border:1px solid #30363d;padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer">
+              <option value="">All Severities</option>
+              <option value="CRITICAL">CRITICAL</option>
+              <option value="HIGH">HIGH</option>
+              <option value="MEDIUM">MEDIUM</option>
+            </select>
+            <button class="btn btn-s" onclick="clearAlerts()">Clear</button>
+          </div>
+        </div>
+        <div class="pb" style="overflow-x:auto;max-height:600px;overflow-y:auto">
+          <table><thead><tr><th>Time</th><th>Severity</th><th>Type</th><th>Src IP</th><th>Message</th></tr></thead>
+          <tbody id="alert-body"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI -->
+    <div id="sec-ai" style="display:none">
+      <div class="panel">
+        <div class="ph">
+          <span class="pt">AI Detection Log</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-g" onclick="trainSynthetic()">Train (Synthetic)</button>
+            <button class="btn btn-s" onclick="document.getElementById('ai-logbox').innerHTML=''">Clear</button>
+          </div>
+        </div>
+        <div class="pb">
+          <div id="ai-logbox" class="ai-log-box"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOPOLOGY -->
+    <div id="sec-topology" style="display:none">
+      <div class="panel">
+        <div class="ph">
+          <span class="pt">Network Topology Map</span>
+          <button class="btn btn-s" onclick="loadTopology()">Refresh</button>
+        </div>
+        <div class="pb"><svg id="topo-svg"></svg></div>
+      </div>
+    </div>
+
+    <!-- PCAP -->
+    <div id="sec-pcap" style="display:none">
+      <div class="panel">
+        <div class="ph"><span class="pt">PCAP Analyzer</span></div>
+        <div class="pb">
+          <div style="margin-bottom:10px;display:flex;align-items:center;gap:10px">
+            <input type="file" id="pcap-file" accept=".pcap,.pcapng" style="color:#c9d1d9;font-size:11px">
+            <button class="btn btn-p" onclick="analyzePcap()">Analyze</button>
+            <button class="btn btn-s" onclick="exportPcap()">Export Live Capture</button>
+          </div>
+          <pre id="pcap-out" style="background:#0a0d12;padding:12px;border-radius:4px;color:#3fb950;font-size:11px;max-height:400px;overflow-y:auto;border:1px solid #21262d">Upload a .pcap file to analyze it.</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- NMAP -->
+    <div id="sec-nmap" style="display:none">
+      <div class="panel">
+        <div class="ph"><span class="pt">Nmap Network Scanner</span></div>
+        <div class="pb">
+          <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+            <input id="nmap-target" placeholder="Target IP or CIDR (e.g. 192.168.1.1)"
+              style="flex:1;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;padding:6px 10px;border-radius:3px;font-family:'Courier New',monospace;font-size:11px">
+            <input id="nmap-ports" placeholder="Ports (e.g. 1-1024)"
+              style="width:160px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;padding:6px 10px;border-radius:3px;font-family:'Courier New',monospace;font-size:11px"
+              value="1-1024">
+            <button class="btn btn-p" onclick="runNmap()">Run Scan</button>
+          </div>
+          <div id="nmap-status" style="font-size:10px;color:#d29922;margin-bottom:8px"></div>
+          <div id="nmap-results" style="overflow-x:auto">
+            <table><thead><tr><th>IP</th><th>Hostname</th><th>Port</th><th>Proto</th><th>State</th><th>Service</th><th>Version</th><th>OS Guess</th></tr></thead>
+            <tbody id="nmap-body"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /layout -->
+
+<script>
+// ── Socket.IO ──────────────────────────────────────────────────────────────
+const socket = io();
+let totalPkts=0, totalAlerts=0, critAlerts=0;
+const classCounts = {NORMAL:0,DDOS:0,PORT_SCAN:0,BRUTE_FORCE:0,MALWARE_C2:0};
+
+// ── Clock ─────────────────────────────────────────────────────────────────
+setInterval(()=>{
+  document.getElementById('clock').textContent = new Date().toTimeString().slice(0,8);
+},1000);
+
+// ── Nav ───────────────────────────────────────────────────────────────────
+document.querySelectorAll('.ni').forEach(el=>{
+  el.addEventListener('click',()=>{
+    const sec = el.dataset.sec;
+    document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+    el.classList.add('active');
+    showSection(sec);
+  });
+});
+function showSection(name){
+  ['overview','packets','devices','alerts','ai','topology','pcap','nmap'].forEach(s=>{
+    const el = document.getElementById('sec-'+s);
+    if(el) el.style.display = s===name?'':'none';
+  });
+  if(name==='topology') loadTopology();
+}
+
+// ── Traffic Chart ─────────────────────────────────────────────────────────
+const trafficData = Array(30).fill(0);
+const tChart = new Chart(document.getElementById('trafficChart'),{
+  type:'line',
+  data:{labels:Array(30).fill(''),datasets:[{
+    data:trafficData,borderColor:'#58a6ff',borderWidth:1.5,
+    backgroundColor:'rgba(88,166,255,0.05)',fill:true,tension:.4,pointRadius:0
+  }]},
+  options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false,min:0}},
+    animation:{duration:200}}
+});
+let lastCount=0;
+setInterval(()=>{
+  const pps=totalPkts-lastCount; lastCount=totalPkts;
+  trafficData.shift(); trafficData.push(pps);
+  tChart.data.datasets[0].data=[...trafficData];
+  tChart.update('none');
+  document.getElementById('m-pps').textContent=pps;
+},1000);
+
+// ── Protocol Doughnut ─────────────────────────────────────────────────────
+const protoCounts={TCP:0,UDP:0,DNS:0,ARP:0,ICMP:0,OTHER:0};
+const pChart = new Chart(document.getElementById('protoChart'),{
+  type:'doughnut',
+  data:{labels:Object.keys(protoCounts),datasets:[{
+    data:Object.values(protoCounts),
+    backgroundColor:['#58a6ff','#3fb950','#d29922','#a78bfa','#f85149','#484f58'],
+    borderWidth:0,hoverOffset:3
+  }]},
+  options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false}},cutout:'60%'}
+});
+function updateProto(proto){
+  const k=['TCP','UDP','DNS','ARP','ICMP'].includes(proto)?proto:'OTHER';
+  protoCounts[k]++;
+  pChart.data.datasets[0].data=Object.values(protoCounts);
+  pChart.update('none');
+}
+
+// ── AI bars ───────────────────────────────────────────────────────────────
+let aiScanned = 0;
+function updateAI(label){
+  // Only process when AI actually ran (non-empty label)
+  if(!label || label === '') return;
+  if(!classCounts.hasOwnProperty(label)) return;
+  
+  aiScanned++;
+  classCounts[label]++;
+  
+  const total = Object.values(classCounts).reduce((a,b)=>a+b,0) || 1;
+  for(const [cls,cnt] of Object.entries(classCounts)){
+    const pct = Math.round(cnt/total*100);
+    const b   = document.getElementById('b-'+cls);
+    const p   = document.getElementById('p-'+cls);
+    if(b) b.style.width = pct + '%';
+    if(p) p.textContent = pct + '%';
+  }
+  
+  // Show threat box only for non-NORMAL classifications
+  if(label !== 'NORMAL'){
+    const box = document.getElementById('ai-threat-box');
+    if(box){
+      box.style.display = 'block';
+      const sevColors = {
+        DDOS:'#f85149', PORT_SCAN:'#d29922',
+        BRUTE_FORCE:'#a78bfa', MALWARE_C2:'#f85149', OTHER:'#d29922'
+      };
+      box.style.borderColor = sevColors[label] || '#d29922';
+      box.style.background  = (sevColors[label] || '#d29922') + '18';
+      box.textContent = '⚠ AI Alert: ' + label + ' detected';
+    }
+  }
+  
+  // Update AI scanned counter
+  const el = document.getElementById('ai-scanned-count');
+  if(el) el.textContent = aiScanned + ' packets analyzed';
+}
+
+// ── Socket events ─────────────────────────────────────────────────────────
+socket.on('init_data', d=>{
+  if(d.stats){
+    document.getElementById('sf-iface').textContent=d.stats.interface||'-';
+    document.getElementById('m-uptime').textContent=Math.round(d.stats.elapsed_seconds)+'s';
+  }
+  if(d.alerts) d.alerts.forEach(addAlert);
+  if(d.devices) populateDevices(d.devices);
+});
+
+socket.on('new_packet', pkt=>{
+  totalPkts++;
+  document.getElementById('m-total').textContent=totalPkts.toLocaleString();
+  document.getElementById('sf-pkts').textContent=totalPkts.toLocaleString();
+  document.getElementById('pkt-count-label').textContent=totalPkts+' pkts';
+  updateProto(pkt.protocol);
+  updateAI(pkt.ai_label);
+  addPacketRow(pkt);
+});
+
+socket.on('new_alert', alert=>{
+  totalAlerts++;
+  if(alert.severity==='CRITICAL') critAlerts++;
+  document.getElementById('m-alerts').textContent=totalAlerts;
+  document.getElementById('badge-alerts').textContent=totalAlerts+' ALERTS';
+  document.getElementById('badge-crit').textContent=critAlerts+' CRITICAL';
+  addAlert(alert);
+  addOvAlert(alert);
+  addAILog('[ALERT] '+alert.severity+': '+alert.message, alert.severity);
+});
+
+socket.on('devices_updated', devs=>{
+  populateDevices(devs);
+  document.getElementById('m-devs').textContent=devs.length;
+});
+
+socket.on('scan_complete', d=>{
+  addAILog('[SCAN] ARP scan complete. '+d.count+' devices found.','INFO');
+});
+
+socket.on('nmap_results', d=>{
+  document.getElementById('nmap-status').textContent='Scan complete: '+d.results.length+' results.';
+  populateNmap(d.results);
+});
+
+socket.on('training_complete', d=>{
+  addAILog('[TRAIN] '+d.status+(d.message?' — '+d.message:''), d.status==='done'?'INFO':'MEDIUM');
+  alert(d.status==='done'?'✅ AI models trained & reloaded!':'❌ Training failed: '+d.message);
+});
+
+// ── Stats polling ─────────────────────────────────────────────────────────
+setInterval(()=>{
+  fetch('/api/stats').then(r=>r.json()).then(d=>{
+    document.getElementById('m-uptime').textContent=Math.round(d.elapsed_seconds)+'s';
+    document.getElementById('sf-iface').textContent=d.interface||'-';
+    document.getElementById('sf-db').textContent=(d.db_pkt_count||0)+' saved';
+  }).catch(()=>{});
+},5000);
+
+// ── Packet table ──────────────────────────────────────────────────────────
+const ptag={TCP:'t-tcp',UDP:'t-udp',DNS:'t-dns',ARP:'t-arp',ICMP:'t-icmp'};
+function addPacketRow(pkt){
+  const tb=document.getElementById('pkt-body');
+  const ts=new Date(pkt.timestamp*1000).toTimeString().slice(0,8);
+  const pc=ptag[pkt.protocol]||'t-oth';
+  const tr=document.createElement('tr');
+  tr.innerHTML=`
+    <td style="color:#484f58">${ts}</td>
+    <td style="color:#58a6ff">${pkt.src_ip||'N/A'}</td>
+    <td style="color:#8b949e">${pkt.dst_ip||'N/A'}</td>
+    <td><span class="pb-tag ${pc}">${pkt.protocol}</span></td>
+    <td style="color:#8b949e">${pkt.app_protocol||''}</td>
+    <td style="color:#484f58">${pkt.src_port||0}</td>
+    <td style="color:#484f58">${pkt.dst_port||0}</td>
+    <td style="color:#484f58">${pkt.packet_size}B</td>
+    <td style="color:#484f58;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(pkt.info||'').slice(0,60)}</td>`;
+  tb.insertBefore(tr,tb.firstChild);
+  if(tb.children.length>300) tb.removeChild(tb.lastChild);
+}
+
+// ── Alerts ────────────────────────────────────────────────────────────────
+function addAlert(a){
+  const ts=new Date((a.timestamp||0)*1000).toTimeString().slice(0,8);
+  const tr=`<tr><td style="color:#484f58">${ts}</td><td class="s-${a.severity}">${a.severity}</td>
+    <td style="color:#8b949e">${a.type||''}</td><td style="color:#58a6ff">${a.src_ip||''}</td>
+    <td>${(a.message||'').slice(0,110)}</td></tr>`;
+  const tb=document.getElementById('alert-body');
+  tb.insertAdjacentHTML('afterbegin',tr);
+}
+function addOvAlert(a){
+  const ts=new Date((a.timestamp||0)*1000).toTimeString().slice(0,8);
+  const tr=`<tr><td style="color:#484f58">${ts}</td><td class="s-${a.severity}">${a.severity}</td>
+    <td style="color:#8b949e">${a.type||''}</td><td style="color:#58a6ff">${a.src_ip||''}</td>
+    <td>${(a.message||'').slice(0,90)}</td></tr>`;
+  const tb=document.getElementById('ov-alert-body');
+  tb.insertAdjacentHTML('afterbegin',tr);
+  if(tb.children.length>5) tb.removeChild(tb.lastChild);
+}
+function clearAlerts(){
+  document.getElementById('alert-body').innerHTML='';
+  document.getElementById('ov-alert-body').innerHTML='';
+  totalAlerts=0; critAlerts=0;
+}
+
+// ── Devices ───────────────────────────────────────────────────────────────
+function populateDevices(devs){
+  const tb=document.getElementById('dev-body');
+  tb.innerHTML='';
+  devs.forEach(d=>{
+    const ts=d.last_seen?new Date(d.last_seen*1000).toTimeString().slice(0,8):'-';
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="color:#58a6ff">${d.ip}</td><td style="color:#8b949e">${d.mac||'N/A'}</td>
+      <td>${d.hostname||'N/A'}</td><td style="color:#484f58">${d.vendor||'Unknown'}</td>
+      <td style="color:#484f58">${ts}</td>`;
+    tb.appendChild(tr);
+  });
+  document.getElementById('m-devs').textContent=devs.length;
+}
+function triggerScan(){
+  fetch('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}' })
+    .then(r=>r.json()).then(()=>addAILog('[SCAN] ARP scan started…','INFO'));
+}
+function triggerNmap(){
+  showSection('nmap');
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+}
+
+// ── AI Log ────────────────────────────────────────────────────────────────
+const SEV_COL={CRITICAL:'#f85149',HIGH:'#f85149',MEDIUM:'#d29922',LOW:'#58a6ff',INFO:'#3fb950'};
+function addAILog(msg, sev='INFO'){
+  const box=document.getElementById('ai-logbox');
+  const ts=new Date().toTimeString().slice(0,8);
+  const col=SEV_COL[sev]||'#8b949e';
+  const div=document.createElement('div');
+  div.innerHTML=`<span style="color:#484f58">[${ts}]</span> <span style="color:${col}">[${sev}]</span> <span style="color:#c9d1d9">${msg}</span>`;
+  box.insertBefore(div,box.firstChild);
+  if(box.children.length>200) box.removeChild(box.lastChild);
+}
+function trainSynthetic(){
+  if(!confirm('Train AI models with synthetic data? (~30 seconds)')) return;
+  addAILog('[TRAIN] Starting training…','INFO');
+  fetch('/api/train',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({synthetic:true})}).then(r=>r.json());
+}
+
+// ── Topology (D3.js) ──────────────────────────────────────────────────────
+function loadTopology(){
+  fetch('/api/topology').then(r=>r.json()).then(data=>{
+    const svg=d3.select('#topo-svg');
+    svg.selectAll('*').remove();
+    const W=svg.node().clientWidth||700, H=280;
+    const sim=d3.forceSimulation(data.nodes)
+      .force('link',d3.forceLink(data.links).id(d=>d.id).distance(100))
+      .force('charge',d3.forceManyBody().strength(-200))
+      .force('center',d3.forceCenter(W/2,H/2));
+    const link=svg.append('g').selectAll('line').data(data.links).join('line')
+      .attr('stroke','#30363d').attr('stroke-width',1.5);
+    const node=svg.append('g').selectAll('circle').data(data.nodes).join('circle')
+      .attr('r',d=>d.type==='router'?12:7)
+      .attr('fill',d=>d.type==='router'?'#f85149':'#58a6ff')
+      .attr('cursor','pointer')
+      .call(d3.drag()
+        .on('start',(e,d)=>{if(!e.active)sim.alphaTarget(.3).restart();d.fx=d.x;d.fy=d.y;})
+        .on('drag', (e,d)=>{d.fx=e.x;d.fy=e.y;})
+        .on('end',  (e,d)=>{if(!e.active)sim.alphaTarget(0);d.fx=null;d.fy=null;}));
+    svg.append('g').selectAll('text').data(data.nodes).join('text')
+      .text(d=>d.label||d.id).attr('font-size',9).attr('fill','#c9d1d9').attr('dx',12).attr('dy',3);
+    sim.on('tick',()=>{
+      link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
+          .attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+      node.attr('cx',d=>d.x).attr('cy',d=>d.y);
+      svg.selectAll('text').attr('x',d=>d.x).attr('y',d=>d.y);
+    });
+  }).catch(e=>console.error('Topology:',e));
+}
+
+// ── PCAP ──────────────────────────────────────────────────────────────────
+function analyzePcap(){
+  const fi=document.getElementById('pcap-file');
+  if(!fi.files.length){alert('Select a PCAP file.');return;}
+  const fd=new FormData(); fd.append('file',fi.files[0]);
+  document.getElementById('pcap-out').textContent='Analyzing…';
+  fetch('/api/pcap/analyze',{method:'POST',body:fd})
+    .then(r=>r.json())
+    .then(d=>document.getElementById('pcap-out').textContent=JSON.stringify(d,null,2))
+    .catch(e=>document.getElementById('pcap-out').textContent='Error: '+e);
+}
+function exportPcap(){
+  fetch('/api/pcap/export',{method:'POST'}).then(r=>r.json())
+    .then(d=>document.getElementById('pcap-out').textContent='Exported to: '+d.file);
+}
+
+// ── Nmap ──────────────────────────────────────────────────────────────────
+function runNmap(){
+  const target=document.getElementById('nmap-target').value.trim();
+  const ports =document.getElementById('nmap-ports').value.trim()||'1-1024';
+  if(!target){alert('Enter a target IP or CIDR.');return;}
+  document.getElementById('nmap-status').textContent='Scanning '+target+'… (this may take a minute)';
+  document.getElementById('nmap-body').innerHTML='';
+  fetch('/api/nmap',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({target,ports})}).then(r=>r.json());
+}
+function populateNmap(results){
+  const tb=document.getElementById('nmap-body');
+  tb.innerHTML='';
+  results.forEach(r=>{
+    const tr=document.createElement('tr');
+    const stateCol=r.state==='open'?'#3fb950':r.state==='filtered'?'#d29922':'#484f58';
+    tr.innerHTML=`<td style="color:#58a6ff">${r.ip}</td><td>${r.hostname||'-'}</td>
+      <td style="color:#58a6ff">${r.port}</td><td style="color:#8b949e">${r.proto}</td>
+      <td style="color:${stateCol}">${r.state}</td><td>${r.service||'-'}</td>
+      <td style="color:#484f58">${r.version||'-'}</td><td style="color:#484f58">${r.os_guess||'-'}</td>`;
+    tb.appendChild(tr);
+  });
+}
+</script>
+</body>
+</html>

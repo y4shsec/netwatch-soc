@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NetWatch SOC — Network Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0d12;color:#c9d1d9;font-family:'Courier New',monospace;font-size:12px}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#0d1117}::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+
+/* Top bar */
+.topbar{background:#0d1117;border-bottom:1px solid #21262d;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{font-size:15px;font-weight:bold;color:#58a6ff;letter-spacing:2px}.logo span{color:#3fb950}
+.actions{display:flex;gap:10px;align-items:center}
+.btn{padding:6px 14px;border-radius:4px;border:none;cursor:pointer;font-family:'Courier New',monospace;font-size:11px;font-weight:bold;transition:all .15s}
+.btn:hover{filter:brightness(1.15)}
+.btn-scan{background:#238636;color:#fff}
+.btn-deep{background:#1f6feb;color:#fff}
+.btn-export{background:#21262d;color:#c9d1d9;border:1px solid #30363d}
+.pulse{width:7px;height:7px;border-radius:50%;background:#3fb950;display:inline-block;animation:pulse 1.5s infinite;margin-right:5px}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+
+/* Network info bar */
+.netinfo{background:#0d1117;border-bottom:1px solid #21262d;padding:10px 20px;display:flex;gap:24px;flex-wrap:wrap}
+.ni-item{display:flex;flex-direction:column;gap:2px}
+.ni-label{font-size:9px;color:#484f58;text-transform:uppercase;letter-spacing:1px}
+.ni-val{font-size:12px;font-weight:bold}
+.ni-val.green{color:#3fb950}.ni-val.blue{color:#58a6ff}.ni-val.yellow{color:#d29922}.ni-val.purple{color:#a78bfa}
+
+/* Stats row */
+.stats-row{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:12px 20px;background:#0a0d12}
+.stat{background:#161b22;border:1px solid #21262d;border-radius:5px;padding:10px 12px;text-align:center}
+.stat-val{font-size:22px;font-weight:bold;margin-bottom:2px}
+.stat-lbl{font-size:9px;color:#484f58;text-transform:uppercase;letter-spacing:.5px}
+
+/* Progress */
+.progress-wrap{padding:0 20px 10px;display:none}
+.progress-bar{height:3px;background:#21262d;border-radius:2px}
+.progress-fill{height:100%;background:linear-gradient(90deg,#1f6feb,#3fb950);border-radius:2px;transition:width .3s;width:0%}
+.progress-text{font-size:10px;color:#8b949e;margin-top:4px}
+
+/* Search + filters */
+.controls{padding:8px 20px;display:flex;gap:10px;align-items:center;background:#0a0d12;border-bottom:1px solid #21262d}
+input[type=text]{background:#161b22;color:#c9d1d9;border:1px solid #30363d;padding:6px 12px;border-radius:4px;font-family:'Courier New',monospace;font-size:11px;width:250px}
+input[type=text]:focus{outline:none;border-color:#58a6ff}
+select{background:#161b22;color:#c9d1d9;border:1px solid #30363d;padding:6px 10px;border-radius:4px;font-family:'Courier New',monospace;font-size:11px;cursor:pointer}
+.filter-count{font-size:10px;color:#484f58;margin-left:auto}
+
+/* Device grid */
+.device-grid{padding:12px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:10px}
+
+/* Device card */
+.device-card{background:#161b22;border:1px solid #21262d;border-radius:6px;overflow:hidden;transition:border-color .2s}
+.device-card:hover{border-color:#30363d}
+.device-card.alert-card{border-color:#f85149}
+.device-header{padding:10px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #21262d;background:#0d1117}
+.device-icon{width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.icon-router{background:#1f6feb22;border:1px solid #1f6feb}
+.icon-phone{background:#23863622;border:1px solid #238636}
+.icon-pc{background:#58a6ff22;border:1px solid #58a6ff}
+.icon-iot{background:#d2992222;border:1px solid #d29922}
+.icon-server{background:#a78bfa22;border:1px solid #a78bfa}
+.icon-apple{background:#48484822;border:1px solid #484848}
+.icon-unknown{background:#21262d;border:1px solid #30363d}
+.device-title{flex:1;min-width:0}
+.device-ip{font-size:13px;font-weight:bold;color:#58a6ff;font-family:'Courier New',monospace}
+.device-hostname{font-size:10px;color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.device-status{width:7px;height:7px;border-radius:50%;background:#3fb950;flex-shrink:0}
+.device-body{padding:10px 14px}
+.info-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262d22}
+.info-row:last-child{border-bottom:none}
+.info-key{font-size:9px;color:#484f58;text-transform:uppercase;letter-spacing:.5px;width:90px;flex-shrink:0}
+.info-val{font-size:10px;color:#c9d1d9;text-align:right;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.info-val.green{color:#3fb950}.info-val.yellow{color:#d29922}.info-val.blue{color:#58a6ff}.info-val.purple{color:#a78bfa}
+.apps-wrap{margin-top:8px;display:flex;flex-wrap:wrap;gap:4px}
+.app-tag{padding:2px 7px;border-radius:3px;font-size:9px;background:#1f6feb18;color:#58a6ff;border:1px solid #1f6feb44}
+.ports-wrap{margin-top:6px;display:flex;flex-wrap:wrap;gap:3px}
+.port-tag{padding:1px 6px;border-radius:3px;font-size:9px}
+.port-common{background:#23863618;color:#3fb950;border:1px solid #23863644}
+.port-warn{background:#f8514918;color:#ffa198;border:1px solid #f8514944}
+.scan-badge{padding:2px 7px;border-radius:3px;font-size:9px;margin-top:6px;display:inline-block}
+.badge-complete{background:#23863618;color:#3fb950;border:1px solid #23863644}
+.badge-pending{background:#d2992218;color:#d29922;border:1px solid #d2992244}
+.os-badge{padding:2px 8px;border-radius:3px;font-size:10px;font-weight:bold}
+.os-windows{background:#0078d422;color:#0078d4;border:1px solid #0078d444}
+.os-linux{background:#f7700022;color:#f77000;border:1px solid #f7700044}
+.os-android{background:#3ddc8422;color:#3ddc84;border:1px solid #3ddc8444}
+.os-ios{background:#48484822;color:#aaaaaa;border:1px solid #48484844}
+.os-macos{background:#48484822;color:#aaaaaa;border:1px solid #48484844}
+.os-cisco{background:#1ba0d822;color:#1ba0d8;border:1px solid #1ba0d844}
+.os-unknown{background:#21262d;color:#484f58;border:1px solid #30363d}
+
+/* Toast */
+.toast{position:fixed;bottom:20px;right:20px;background:#161b22;border:1px solid #21262d;border-radius:6px;padding:10px 16px;font-size:11px;color:#c9d1d9;z-index:9999;transform:translateY(20px);opacity:0;transition:all .3s}
+.toast.show{transform:translateY(0);opacity:1}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">NET<span>WATCH</span> SOC — Network Intelligence</div>
+  <div class="actions">
+    <span><span class="pulse"></span><span id="scan-status" style="color:#3fb950;font-size:10px">READY</span></span>
+    <button class="btn btn-scan" onclick="startScan(false)">⚡ Quick Scan</button>
+    <button class="btn btn-deep" onclick="startScan(true)">🔬 Deep Scan (OS + Services)</button>
+    <button class="btn btn-export" onclick="exportCSV()">⬇ Export CSV</button>
+  </div>
+</div>
+
+<!-- Network Info Bar -->
+<div class="netinfo" id="netinfo-bar">
+  <div class="ni-item"><div class="ni-label">Interface</div><div class="ni-val blue" id="ni-iface">—</div></div>
+  <div class="ni-item"><div class="ni-label">Local IP</div><div class="ni-val green" id="ni-ip">—</div></div>
+  <div class="ni-item"><div class="ni-label">Subnet</div><div class="ni-val blue" id="ni-subnet">—</div></div>
+  <div class="ni-item"><div class="ni-label">MAC Address</div><div class="ni-val yellow" id="ni-mac">—</div></div>
+  <div class="ni-item"><div class="ni-label">Gateway</div><div class="ni-val yellow" id="ni-gw">—</div></div>
+  <div class="ni-item"><div class="ni-label">DNS Servers</div><div class="ni-val purple" id="ni-dns">—</div></div>
+  <div class="ni-item"><div class="ni-label">Network Type</div><div class="ni-val green" id="ni-type">—</div></div>
+</div>
+
+<!-- Stats -->
+<div class="stats-row">
+  <div class="stat"><div class="stat-val green" id="s-total">0</div><div class="stat-lbl">Total Devices</div></div>
+  <div class="stat"><div class="stat-val blue" id="s-phones">0</div><div class="stat-lbl">Phones</div></div>
+  <div class="stat"><div class="stat-val purple" id="s-pcs">0</div><div class="stat-lbl">PCs / Laptops</div></div>
+  <div class="stat"><div class="stat-val yellow" id="s-routers">0</div><div class="stat-lbl">Routers / APs</div></div>
+  <div class="stat"><div class="stat-val" style="color:#a78bfa" id="s-servers">0</div><div class="stat-lbl">Servers</div></div>
+  <div class="stat"><div class="stat-val" style="color:#d29922" id="s-iot">0</div><div class="stat-lbl">IoT Devices</div></div>
+</div>
+
+<!-- Progress -->
+<div class="progress-wrap" id="progress-wrap">
+  <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+  <div class="progress-text" id="progress-text">Scanning...</div>
+</div>
+
+<!-- Controls -->
+<div class="controls">
+  <input type="text" id="search-box" placeholder="🔍 Search by IP, MAC, hostname, vendor, OS..." oninput="filterDevices()">
+  <select id="filter-type" onchange="filterDevices()">
+    <option value="">All Device Types</option>
+    <option value="Router">Routers</option>
+    <option value="Phone">Phones</option>
+    <option value="PC">PCs</option>
+    <option value="Server">Servers</option>
+    <option value="IoT">IoT</option>
+    <option value="Apple">Apple</option>
+    <option value="Android">Android</option>
+  </select>
+  <select id="filter-os" onchange="filterDevices()">
+    <option value="">All OS Types</option>
+    <option value="Windows">Windows</option>
+    <option value="Linux">Linux</option>
+    <option value="Android">Android</option>
+    <option value="iOS">iOS</option>
+    <option value="macOS">macOS</option>
+    <option value="Cisco">Cisco</option>
+  </select>
+  <span class="filter-count" id="filter-count">0 devices</span>
+</div>
+
+<!-- Device Cards -->
+<div class="device-grid" id="device-grid"></div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const socket = io();
+let allDevices = {};
+let networkInfo = {};
+
+// ── Socket events ──────────────────────────────────────────────────────────
+socket.on('net_info', info => {
+  networkInfo = info;
+  document.getElementById('ni-iface').textContent  = info.interface   || '—';
+  document.getElementById('ni-ip').textContent     = info.local_ip    || '—';
+  document.getElementById('ni-subnet').textContent = info.subnet_cidr || '—';
+  document.getElementById('ni-mac').textContent    = info.mac_address || '—';
+  document.getElementById('ni-gw').textContent     = info.gateway     || '—';
+  document.getElementById('ni-dns').textContent    = (info.dns_servers||[]).join(', ') || '—';
+  document.getElementById('ni-type').textContent   = info.network_type|| '—';
+});
+
+socket.on('device_update', dev => {
+  allDevices[dev.ip] = dev;
+  renderDevice(dev);
+  updateStats();
+});
+
+socket.on('scan_progress', data => {
+  const pct = Math.round(data.done / data.total * 100);
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-text').textContent =
+    `Scanning... ${data.done}/${data.total} — Current: ${data.current_ip}`;
+});
+
+socket.on('scan_complete', data => {
+  document.getElementById('scan-status').textContent = '✓ SCAN COMPLETE';
+  document.getElementById('scan-status').style.color = '#3fb950';
+  document.getElementById('progress-wrap').style.display = 'none';
+  showToast(`✅ Scan complete — ${data.count} devices found`);
+  updateStats();
+});
+
+socket.on('init_intel', data => {
+  if (data.net_info) {
+    socket.emit('__', data.net_info); // re-fire as net_info
+    networkInfo = data.net_info;
+    document.getElementById('ni-iface').textContent  = data.net_info.interface   || '—';
+    document.getElementById('ni-ip').textContent     = data.net_info.local_ip    || '—';
+    document.getElementById('ni-subnet').textContent = data.net_info.subnet_cidr || '—';
+    document.getElementById('ni-mac').textContent    = data.net_info.mac_address || '—';
+    document.getElementById('ni-gw').textContent     = data.net_info.gateway     || '—';
+    document.getElementById('ni-dns').textContent    = (data.net_info.dns_servers||[]).join(', ') || '—';
+    document.getElementById('ni-type').textContent   = data.net_info.network_type|| '—';
+  }
+  if (data.devices) {
+    data.devices.forEach(dev => { allDevices[dev.ip] = dev; renderDevice(dev); });
+    updateStats();
+  }
+});
+
+// ── Scan controls ──────────────────────────────────────────────────────────
+function startScan(deep) {
+  document.getElementById('scan-status').textContent  = '● SCANNING';
+  document.getElementById('scan-status').style.color  = '#d29922';
+  document.getElementById('progress-wrap').style.display = 'block';
+  document.getElementById('progress-fill').style.width = '2%';
+  document.getElementById('progress-text').textContent = 'Starting scan...';
+  document.getElementById('device-grid').innerHTML     = '';
+  allDevices = {};
+  fetch('/api/intel/scan', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({deep})
+  }).then(r => r.json()).then(d => {
+    showToast(deep ? '🔬 Deep scan started (2-5 min)...' : '⚡ Quick ARP scan started...');
+  });
+}
+
+// ── Render device card ─────────────────────────────────────────────────────
+const DEVICE_ICONS = {
+  'Router': {icon:'🔀', cls:'icon-router'},
+  'Phone':  {icon:'📱', cls:'icon-phone'},
+  'PC':     {icon:'💻', cls:'icon-pc'},
+  'Server': {icon:'🖥', cls:'icon-server'},
+  'IoT':    {icon:'⚡', cls:'icon-iot'},
+  'Apple':  {icon:'', cls:'icon-apple'},
+};
+
+function getIcon(deviceType) {
+  for(const [k,v] of Object.entries(DEVICE_ICONS)) {
+    if(deviceType.includes(k)) return v;
+  }
+  return {icon:'❓', cls:'icon-unknown'};
+}
+
+function getOSBadgeClass(os) {
+  if(!os) return 'os-unknown';
+  const o = os.toLowerCase();
+  if(o.includes('windows')) return 'os-windows';
+  if(o.includes('linux') || o.includes('ubuntu') || o.includes('debian')) return 'os-linux';
+  if(o.includes('android')) return 'os-android';
+  if(o.includes('ios') || o.includes('iphone') || o.includes('ipad')) return 'os-ios';
+  if(o.includes('mac') || o.includes('darwin')) return 'os-macos';
+  if(o.includes('cisco') || o.includes('juniper')) return 'os-cisco';
+  return 'os-unknown';
+}
+
+function isWarnPort(port) {
+  return [21,23,135,139,445,3389,5900].includes(port);
+}
+
+function renderDevice(dev) {
+  const {icon, cls} = getIcon(dev.device_type || '');
+  const osCls       = getOSBadgeClass(dev.os_family || dev.ttl_hint || '');
+  const osDisplay   = dev.os_family || dev.ttl_hint || 'Unknown';
+
+  const apps = (dev.active_apps || []).slice(0,8)
+    .map(a => `<span class="app-tag">${a}</span>`).join('');
+
+  const ports = (dev.open_ports || []).slice(0,12).map(p => {
+    const svc = (dev.services||[]).find(s=>s.port===p);
+    const cls2 = isWarnPort(p) ? 'port-warn' : 'port-common';
+    const label = svc ? `${p}/${svc.name}` : p;
+    return `<span class="port-tag ${cls2}">${label}</span>`;
+  }).join('');
+
+  const scanBadge = dev.scan_complete
+    ? '<span class="scan-badge badge-complete">✓ Deep Scan Done</span>'
+    : '<span class="scan-badge badge-pending">○ Pending Deep Scan</span>';
+
+  const services = (dev.services||[]).slice(0,3)
+    .map(s => `${s.port}/${s.name}${s.version&&s.version!=='N/A'?' ('+s.version+')':''}`)
+    .join(', ') || 'N/A';
+
+  const html = `
+    <div class="device-card" id="card-${dev.ip.replace(/\./g,'-')}" data-ip="${dev.ip}"
+         data-type="${dev.device_type||''}" data-os="${dev.os_family||dev.ttl_hint||''}">
+      <div class="device-header">
+        <div class="device-icon ${cls}">${icon}</div>
+        <div class="device-title">
+          <div class="device-ip">${dev.ip}</div>
+          <div class="device-hostname">${dev.hostname||dev.ip}</div>
+        </div>
+        <div class="device-status"></div>
+      </div>
+      <div class="device-body">
+        <div class="info-row">
+          <span class="info-key">Device Type</span>
+          <span class="info-val blue">${dev.device_type||'Unknown'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">MAC</span>
+          <span class="info-val yellow">${dev.mac||'N/A'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Vendor</span>
+          <span class="info-val">${dev.vendor||'Unknown'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">OS</span>
+          <span class="info-val">
+            <span class="os-badge ${osCls}">${osDisplay}</span>
+            ${dev.os_confidence ? `<span style="color:#484f58;font-size:9px"> ${dev.os_confidence}</span>` : ''}
+          </span>
+        </div>
+        ${dev.os_version ? `
+        <div class="info-row">
+          <span class="info-key">OS Version</span>
+          <span class="info-val" style="color:#8b949e">${dev.os_version}</span>
+        </div>` : ''}
+        <div class="info-row">
+          <span class="info-key">Open Ports</span>
+          <span class="info-val">${(dev.open_ports||[]).length > 0 ? dev.open_ports.slice(0,8).join(', ') : 'None detected'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Services</span>
+          <span class="info-val purple">${services}</span>
+        </div>
+        ${scanBadge}
+        ${apps ? `<div style="margin-top:6px;font-size:9px;color:#484f58;margin-bottom:3px">ACTIVE APPS (from DNS)</div><div class="apps-wrap">${apps}</div>` : ''}
+        ${ports ? `<div style="margin-top:6px;font-size:9px;color:#484f58;margin-bottom:3px">PORTS</div><div class="ports-wrap">${ports}</div>` : ''}
+      </div>
+    </div>`;
+
+  const existing = document.getElementById('card-'+dev.ip.replace(/\./g,'-'));
+  if(existing) {
+    existing.outerHTML = html;
+  } else {
+    document.getElementById('device-grid').insertAdjacentHTML('afterbegin', html);
+  }
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+function updateStats() {
+  const devs = Object.values(allDevices);
+  document.getElementById('s-total').textContent   = devs.length;
+  document.getElementById('s-phones').textContent  = devs.filter(d=>(d.device_type||'').includes('Phone')||(d.device_type||'').includes('Android')||(d.device_type||'').includes('iOS')).length;
+  document.getElementById('s-pcs').textContent     = devs.filter(d=>(d.device_type||'').includes('PC')||(d.device_type||'').includes('Laptop')||(d.device_type||'').includes('Mac')).length;
+  document.getElementById('s-routers').textContent = devs.filter(d=>(d.device_type||'').includes('Router')||(d.device_type||'').includes('Network')).length;
+  document.getElementById('s-servers').textContent = devs.filter(d=>(d.device_type||'').includes('Server')).length;
+  document.getElementById('s-iot').textContent     = devs.filter(d=>(d.device_type||'').includes('IoT')).length;
+  filterDevices();
+}
+
+// ── Filter ─────────────────────────────────────────────────────────────────
+function filterDevices() {
+  const q    = document.getElementById('search-box').value.toLowerCase();
+  const type = document.getElementById('filter-type').value.toLowerCase();
+  const os   = document.getElementById('filter-os').value.toLowerCase();
+  let shown  = 0;
+  document.querySelectorAll('.device-card').forEach(card => {
+    const ip  = (card.dataset.ip||'').toLowerCase();
+    const t   = (card.dataset.type||'').toLowerCase();
+    const o   = (card.dataset.os||'').toLowerCase();
+    const txt = card.textContent.toLowerCase();
+    const matchQ    = !q    || txt.includes(q);
+    const matchType = !type || t.includes(type);
+    const matchOS   = !os   || o.includes(os);
+    const show      = matchQ && matchType && matchOS;
+    card.style.display = show ? '' : 'none';
+    if(show) shown++;
+  });
+  document.getElementById('filter-count').textContent = shown + ' devices shown';
+}
+
+// ── Export CSV ─────────────────────────────────────────────────────────────
+function exportCSV() {
+  const headers = ['IP','MAC','Vendor','Hostname','Device Type','OS Family','OS Version','Open Ports','Services','Active Apps'];
+  const rows = Object.values(allDevices).map(d => [
+    d.ip, d.mac, d.vendor, d.hostname, d.device_type,
+    d.os_family||d.ttl_hint, d.os_version,
+    (d.open_ports||[]).join(';'),
+    (d.services||[]).map(s=>s.port+'/'+s.name).join(';'),
+    (d.active_apps||[]).join(';')
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(c => `"${(c||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `netwatch_devices_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+socket.on('connect', () => {
+  fetch('/api/intel/info').then(r=>r.json()).then(d => {
+    if(d.net_info) {
+      const i = d.net_info;
+      document.getElementById('ni-iface').textContent  = i.interface   || '—';
+      document.getElementById('ni-ip').textContent     = i.local_ip    || '—';
+      document.getElementById('ni-subnet').textContent = i.subnet_cidr || '—';
+      document.getElementById('ni-mac').textContent    = i.mac_address || '—';
+      document.getElementById('ni-gw').textContent     = i.gateway     || '—';
+      document.getElementById('ni-dns').textContent    = (i.dns_servers||[]).join(', ')||'—';
+      document.getElementById('ni-type').textContent   = i.network_type|| '—';
+    }
+    if(d.devices) {
+      d.devices.forEach(dev => { allDevices[dev.ip] = dev; renderDevice(dev); });
+      updateStats();
+    }
+  });
+});
+</script>
+</body>
+</html>

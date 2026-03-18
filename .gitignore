@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+models/*.pkl
+data/cicids2017/*.csv
+logs/*.log
+captures/*.pcap
+database/logs.db
+.DS_Store
+Thumbs.db
+*.egg-info/
+dist/
+build/
